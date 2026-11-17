@@ -1,0 +1,241 @@
+<!doctype html>
+<html lang="fr">
+<head>
+  <meta charset="utf-8">
+  <meta name="viewport" content="width=device-width, initial-scale=1">
+  <title>Levier · moduler la voie 2 par la voie 1</title>
+  <meta name="description" content="Outil pour enseignants : moduler une évaluation de voie 2 (IA autorisée) par un contrôle de voie 1 (sans IA), avec effet de levier réglable, simulation et export tableur.">
+  <link rel="stylesheet" href="style.css">
+  <!-- SheetJS (version fixée) : sert uniquement aux exports .xlsx et .ods. Le CSV et la copie fonctionnent sans. -->
+  <script defer src="https://cdnjs.cloudflare.com/ajax/libs/xlsx/0.18.5/xlsx.full.min.js"></script>
+  <script defer src="app.js"></script>
+</head>
+<body>
+
+<header class="app-header">
+  <div class="brand">
+    <h1>Levier</h1>
+    <p>Moduler une évaluation de <strong class="c-lane2">voie 2</strong> (IA autorisée) par un contrôle de <strong class="c-lane1">voie 1</strong> (sans IA)</p>
+  </div>
+  <div class="header-actions">
+    <button type="button" class="btn ghost" id="btn-save-config" title="Télécharge les productions et les réglages (pas les notes des élèves)">Enregistrer la configuration</button>
+    <button type="button" class="btn ghost" id="btn-load-config">Charger…</button>
+    <button type="button" class="btn ghost" id="btn-reset">Réinitialiser</button>
+    <input type="file" id="file-config" accept="application/json,.json" hidden>
+  </div>
+</header>
+
+<nav class="tabs" role="tablist" aria-label="Étapes">
+  <button type="button" class="tab" role="tab" id="tab-voie2" data-panel="voie2" aria-controls="panel-voie2" aria-selected="true">
+    <span class="step">1</span><span class="name">Voie 2</span><small>les travaux avec IA</small>
+  </button>
+  <button type="button" class="tab" role="tab" id="tab-voie1" data-panel="voie1" aria-controls="panel-voie1" aria-selected="false" tabindex="-1">
+    <span class="step">2</span><span class="name">Voie 1</span><small>le contrôle et le levier</small>
+  </button>
+  <button type="button" class="tab" role="tab" id="tab-classe" data-panel="classe" aria-controls="panel-classe" aria-selected="false" tabindex="-1">
+    <span class="step">3</span><span class="name">Classe</span><small>notes et export</small>
+  </button>
+</nav>
+
+<main>
+
+<!-- ====================== ÉCRAN 1 : VOIE 2 ====================== -->
+<section id="panel-voie2" class="panel lane2" role="tabpanel" aria-labelledby="tab-voie2">
+  <div class="panel-head">
+    <h2>Voie 2 · l’évaluation ouverte <span class="tag">IA autorisée</span></h2>
+    <p>Listez les productions évaluées en voie 2 et leur poids dans un total de 100. Le <strong>barème</strong> est la note maximale avec laquelle vous corrigez chaque production (20, 10, 4 points…) : l’outil la ramène au poids indiqué.</p>
+  </div>
+
+  <div class="card">
+    <div class="table-wrap">
+      <table class="grid" id="tasks-table">
+        <thead>
+          <tr><th class="idx">#</th><th>Production</th><th class="num">Barème</th><th class="num">Poids (sur 100)</th><th><span class="sr-only">Actions</span></th></tr>
+        </thead>
+        <tbody id="tasks-body"></tbody>
+        <tfoot>
+          <tr><td></td><td>Total</td><td></td><td class="num"><span id="poids-total" class="badge"></span></td><td></td></tr>
+        </tfoot>
+      </table>
+    </div>
+    <div class="toolbar">
+      <button type="button" class="btn" id="task-add">+ Ajouter une production</button>
+      <button type="button" class="btn ghost" id="task-equal">Répartir équitablement</button>
+      <button type="button" class="btn ghost" id="task-normalize">Ramener le total à 100</button>
+    </div>
+    <p id="poids-msg" class="hint" role="status"></p>
+  </div>
+
+  <div class="card">
+    <h3>Échelle de la note finale</h3>
+    <p class="hint">La note de voie 2 est calculée sur cette échelle, puis modulée par la voie 1.</p>
+    <div class="fields">
+      <label class="field"><span>Note maximale</span>
+        <input type="text" inputmode="decimal" data-cfg="echelle" autocomplete="off">
+        <small>Par exemple 20, 10, 6 ou 100.</small></label>
+      <label class="field"><span>Note minimale</span>
+        <input type="text" inputmode="decimal" data-cfg="min" autocomplete="off">
+        <small>0, ou 1 si votre échelle commence à 1.</small></label>
+      <label class="field"><span>Arrondi de la note finale</span>
+        <select data-cfg="arrondi">
+          <option value="0">Aucun</option>
+          <option value="0.25">Au quart de point</option>
+          <option value="0.5">Au demi-point</option>
+          <option value="1">Au point entier</option>
+        </select></label>
+    </div>
+  </div>
+
+  <div class="nav-next"><button type="button" class="btn primary" data-goto="voie1">Continuer : la voie 1 →</button></div>
+</section>
+
+<!-- ====================== ÉCRAN 2 : VOIE 1 ====================== -->
+<section id="panel-voie1" class="panel lane1" role="tabpanel" aria-labelledby="tab-voie1" hidden>
+  <div class="panel-head">
+    <h2>Voie 1 · le contrôle sans IA <span class="tag">et son effet de levier</span></h2>
+    <p>Le contrôle de voie 1 vérifie que l’élève maîtrise ce qu’il a produit en voie 2. Son résultat module la note de voie 2 : choisissez comment.</p>
+  </div>
+
+  <div class="card">
+    <h3>1. Le contrôle</h3>
+    <div class="fields">
+      <label class="field"><span>Barème du contrôle</span>
+        <input type="text" inputmode="decimal" data-cfg="x" autocomplete="off">
+        <small>Nombre de questions ou note maximale (par exemple 16).</small></label>
+      <label class="field" data-modes="additif multiplicatif seuil"><span id="ref-label">Point neutre</span>
+        <input type="text" inputmode="decimal" data-cfg="ref" autocomplete="off">
+        <small id="ref-hint"></small></label>
+    </div>
+    <div class="toolbar">
+      <button type="button" class="btn ghost" id="btn-median" disabled>Caler sur la médiane de la classe</button>
+      <span class="hint" id="median-info"></span>
+    </div>
+    <p id="voie1-msg" class="hint warn" role="status"></p>
+  </div>
+
+  <div class="card">
+    <h3>2. Le mode de modulation</h3>
+    <div class="mode-cards" id="mode-cards" role="radiogroup" aria-label="Mode de modulation"></div>
+  </div>
+
+  <div class="split">
+    <div class="card">
+      <h3>3. Les réglages du mode</h3>
+      <div class="fields stack">
+        <label class="field" data-modes="additif multiplicatif"><span>Zone neutre (±)</span>
+          <input type="text" inputmode="decimal" data-cfg="zone" autocomplete="off">
+          <small>Écart toléré autour du point neutre, en points du contrôle. Absorbe le hasard d’un petit nombre de questions.</small></label>
+        <label class="field" data-modes="additif"><span>Amplitude k du levier</span>
+          <input type="text" inputmode="decimal" id="k-input" autocomplete="off">
+          <small id="k-hint"></small></label>
+        <label class="field" data-modes="additif"><span>Malus maximal</span>
+          <input type="text" inputmode="decimal" data-cfg="malus" autocomplete="off">
+          <small>Points retirés à la note de voie 2 pour un score de 0.</small></label>
+        <label class="field" data-modes="additif"><span>Bonus maximal</span>
+          <input type="text" inputmode="decimal" data-cfg="bonus" autocomplete="off">
+          <small>Points ajoutés pour un score maximal.</small></label>
+        <label class="field" data-modes="multiplicatif"><span>Coefficient minimal</span>
+          <input type="text" inputmode="decimal" data-cfg="cmin" autocomplete="off">
+          <small>Appliqué pour un score de 0 (par exemple 0,8).</small></label>
+        <label class="field" data-modes="multiplicatif"><span>Coefficient maximal</span>
+          <input type="text" inputmode="decimal" data-cfg="cmax" autocomplete="off">
+          <small>Appliqué pour un score maximal (par exemple 1,1).</small></label>
+        <label class="field" data-modes="plafond"><span>Marge du plafond (points)</span>
+          <input type="text" inputmode="decimal" data-cfg="marge" autocomplete="off">
+          <small>Points de tolérance au-dessus de la note de voie 1.</small></label>
+        <label class="field" data-modes="seuil"><span>Part conservée sous le seuil (%)</span>
+          <input type="text" inputmode="decimal" data-cfg="part" autocomplete="off">
+          <small>0 : la voie 2 ne compte pas ; 100 : aucun effet.</small></label>
+      </div>
+    </div>
+
+    <div class="card">
+      <h3>4. Aperçu</h3>
+      <label class="field inline"><span>Exemple : note de voie 2 d’un élève</span>
+        <input type="text" inputmode="decimal" data-cfg="exemple" autocomplete="off" class="short"></label>
+      <div id="chart" class="chart-box" role="img" aria-label="Courbe de la note finale selon le score de voie 1"></div>
+      <div class="table-wrap short-table">
+        <table class="grid compact" id="preview-table">
+          <thead><tr><th class="num">Score voie 1</th><th class="num">Effet (points)</th><th class="num">Note finale</th></tr></thead>
+          <tbody id="preview-body"></tbody>
+        </table>
+      </div>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>5. Texte d’annonce aux élèves</h3>
+    <p class="hint">Généré à partir de vos réglages. Annoncez la règle avant le travail.</p>
+    <div id="annonce-text" class="annonce"></div>
+    <div class="toolbar"><button type="button" class="btn" id="btn-copy-annonce">Copier le texte</button></div>
+  </div>
+
+  <div class="nav-next"><button type="button" class="btn primary" data-goto="classe">Continuer : la classe →</button></div>
+</section>
+
+<!-- ====================== ÉCRAN 3 : CLASSE ====================== -->
+<section id="panel-classe" class="panel lane3" role="tabpanel" aria-labelledby="tab-classe" hidden>
+  <div class="panel-head">
+    <h2>Classe · notes et export</h2>
+    <p>Saisissez ou collez les notes. Rien n’est envoyé ni enregistré : les notes des élèves restent dans cette page et disparaissent quand vous la fermez. Utilisez un identifiant plutôt qu’un nom si vous préférez.</p>
+  </div>
+
+  <div class="stats" id="stats"></div>
+
+  <div class="card">
+    <div class="toolbar">
+      <button type="button" class="btn" id="btn-add-student">+ Ajouter un élève</button>
+      <button type="button" class="btn ghost" id="btn-add-5">+ 5 lignes</button>
+      <button type="button" class="btn ghost" id="btn-clear-students">Vider la liste</button>
+      <label class="field inline"><span>Si le contrôle est absent</span>
+        <select id="select-absent">
+          <option value="neutre">ne pas moduler la note</option>
+          <option value="zero">compter 0 au contrôle</option>
+        </select></label>
+    </div>
+
+    <details class="paste" id="paste-details">
+      <summary>Coller depuis un tableur</summary>
+      <p class="hint" id="paste-help"></p>
+      <textarea id="paste-text" rows="6" spellcheck="false" placeholder="Collez ici les cellules copiées depuis Excel, LibreOffice ou Google Sheets"></textarea>
+      <div class="toolbar">
+        <label class="radio"><input type="radio" name="paste-mode" value="replace" checked> Remplacer la liste</label>
+        <label class="radio"><input type="radio" name="paste-mode" value="append"> Ajouter à la suite</label>
+        <button type="button" class="btn" id="btn-paste-import">Importer</button>
+        <span class="hint" id="paste-msg" role="status"></span>
+      </div>
+    </details>
+
+    <div class="table-wrap tall">
+      <table class="grid students" id="class-table">
+        <thead id="class-head"></thead>
+        <tbody id="class-body"></tbody>
+      </table>
+    </div>
+  </div>
+
+  <div class="card">
+    <h3>Exporter</h3>
+    <p class="hint">Les fichiers Excel et LibreOffice contiennent de vraies formules et un bloc « Paramètres » à droite des notes : ils restent modifiables et vérifiables.</p>
+    <div class="toolbar">
+      <button type="button" class="btn primary" id="btn-xlsx">Excel (.xlsx)</button>
+      <button type="button" class="btn primary" id="btn-ods">LibreOffice (.ods)</button>
+      <button type="button" class="btn" id="btn-csv">CSV (.csv)</button>
+      <button type="button" class="btn" id="btn-copy">Copier pour un tableur</button>
+      <label class="field inline"><span>Décimales</span>
+        <select id="sel-decimal"><option value=",">virgule (12,5)</option><option value=".">point (12.5)</option></select></label>
+    </div>
+    <p id="export-note" class="hint" role="status"></p>
+  </div>
+</section>
+
+</main>
+
+<div id="toast" class="toast" role="status" aria-live="polite" hidden></div>
+
+<footer class="app-footer">
+  <p>Levier fonctionne entièrement dans votre navigateur. Aucune donnée n’est transmise. Les valeurs proposées par défaut sont des points de départ, pas des normes : adaptez-les à votre classe et au règlement d’évaluation de votre établissement.</p>
+</footer>
+
+</body>
+</html>
